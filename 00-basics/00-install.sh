@@ -30,3 +30,5 @@ else
   echo ""
   exit 1
 fi
+
+list_all_helm_packages

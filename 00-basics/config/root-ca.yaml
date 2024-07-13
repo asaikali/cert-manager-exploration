@@ -1,0 +1,127 @@
+# Overview: Creating a Certificate Authority (CA) with cert-manager for Cluster
+# Workloads
+#
+# This file demonstrates the process of creating a root Certificate Authority
+# (CA) using cert-manager in Kubernetes. This CA is intended for use by
+# workloads and applications running on the cluster, NOT for the Kubernetes
+# cluster itself.
+#
+# Key concepts:
+#
+# 1. Certificate Authority (CA): A trusted entity that issues digital
+#    certificates. These certificates are used to verify the identity of
+#    parties in digital communications and establish secure connections.
+#
+# 2. Root CA: The top-level authority in a certificate hierarchy. Its
+#    certificate is self-signed and used to sign other certificates.
+#
+# 3. Public Key Infrastructure (PKI): A system for creating, storing, and
+#    distributing digital certificates.
+#
+# The process to create a CA for cluster workloads involves:
+# a) Creating a self-signed issuer (a cert-manager resource that can create
+#    self-signed certificates)
+# b) Using this issuer to create a root CA certificate
+# c) Creating a ClusterIssuer that uses this root CA certificate to sign
+#    certificates for workloads
+#
+# This setup allows you to have your own internal PKI for applications running
+# on the cluster, giving you control over certificate issuance and management
+# for these workloads.
+
+
+---
+# Issuer: Self-Signed Issuer
+#
+# This Issuer is self-signed and will be used to create the root CA certificate
+# for workloads. It's the starting point of our PKI for cluster applications,
+# capable of creating a self-signed certificate.
+#
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}
+
+---
+# Certificate: Kubernetes Cluster Workload Root CA
+#
+# This Certificate resource defines the root Certificate Authority (CA) for
+# workloads in the Kubernetes cluster. It is a critical component of the
+# cluster's Public Key Infrastructure (PKI) for applications, responsible for
+# issuing and signing certificates used by workloads and services running on
+# the cluster.
+#
+# Important: This CA is NOT used by the Kubernetes cluster itself, but by
+# applications deployed to the cluster.
+#
+# Key aspects of this workload root CA:
+# 1. Self-signed: It uses the 'selfsigned-issuer' to create its own certificate.
+# 2. Short-lived: Set to expire after 90 days to enhance security through
+#    frequent rotation.
+# 3. Automated renewal: Configured to renew 30 days before expiration.
+# 4. ECDSA: Uses Elliptic Curve Digital Signature Algorithm for enhanced
+#    security and performance.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: root-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: "Kubernetes Cluster Workload Root CA"
+  duration: 2160h  # 90 days
+  renewBefore: 720h  # 30 days before expiration
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  # The usages field specifies the permitted uses of the private key
+  # associated with this certificate. For a root CA, we need to carefully
+  # select these to ensure the CA can perform its required functions while
+  # adhering to the principle of least privilege.
+  usages:
+    # Allows the CA to sign certificates
+    - cert sign
+    # Allows the CA to sign Certificate Revocation Lists (CRLs)
+    - crl sign
+  secretName: root-ca-secret
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
+
+---
+# ClusterIssuer: Cluster Workload Root CA Issuer
+#
+# This ClusterIssuer uses the workload root CA certificate we just created.
+# It can be used to sign certificates for applications and services across all
+# namespaces.
+#
+# Key points:
+# 1. Cluster-wide scope: Can issue certificates for workloads in any namespace.
+# 2. Uses the workload root CA: References the secret containing the workload
+#    root CA certificate and private key.
+# 3. Central management: Provides a single point of control for workload
+#    certificate issuance across the cluster.
+#
+# Note on Cluster-wide Scope:
+# This ClusterIssuer is cluster-scoped (not namespace-specific) for several
+# reasons:
+# 1. Flexibility: It allows issuing certificates for workloads in any namespace.
+# 2. Centralized PKI: It provides a single, cluster-wide trust anchor for all
+#    workload certificates.
+# 3. Simplified Management: Admins can manage certificate issuance for workloads
+#    from a single point for the entire cluster.
+# 4. Consistency: Ensures all workloads use the same root of trust, maintaining
+#    a consistent PKI hierarchy.
+#
+# Important: This issuer is for workload certificates only, not for Kubernetes
+# system components.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: root-ca-issuer
+spec:
+  ca:
+    secretName: root-ca-secret
