@@ -16,7 +16,7 @@ helm upgrade --install cert-manager cert-manager \
   --namespace cert-manager \
   --create-namespace \
   --version ${CERT_MANAGER_VERSION} \
-  --set crds.enabled=true \
+  --values cert-manager-values.yaml \
   --wait
 
 # Check if CertManager was successfully deployed
